@@ -1,0 +1,80 @@
+Personne
+Vélo
+Voiture
+Moto
+Avion
+Bus
+Train
+Camion
+Bateau
+Feu de circulation
+Bouche d'incendie
+Panneau stop
+Parcomètre
+Banc
+Oiseau
+Chat
+Chien
+Cheval
+Mouton
+Vache
+Éléphant
+Ours
+Zèbre
+Girafe
+Sac à dos
+Parapluie
+Sac à main
+Cravate
+Valise
+Frisbee
+Skis
+Snowboard
+Ballon de sport
+Cerf-volant
+Batte de baseball
+Gant de baseball
+Skateboard
+Planche de surf
+Raquette de tennis
+Bouteille
+Verre à vin
+Tasse
+Fourchette
+Couteau
+Cuillère
+Bol
+Banane
+Pomme
+Sandwich
+Orange
+Brocoli
+Carotte
+Hot-dog
+Pizza
+Donut
+Gâteau
+Chaise
+Canapé
+Plante en pot
+Lit
+Table
+Toilettes
+Télévision
+Ordinateur portable
+Souris
+Télécommande
+Clavier
+Téléphone portable
+Micro-ondes
+Four
+Grille-pain
+Évier
+Réfrigérateur
+Livre
+Horloge
+Vase
+Ciseaux
+Ours en peluche
+Sèche-cheveux
+Brosse à dents

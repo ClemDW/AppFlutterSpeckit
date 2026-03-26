@@ -1,0 +1,9 @@
+{
+  "@@locale": "fr",
+  "appTitle": "Detection d'Objets",
+  "cameraButton": "Camera",
+  "galleryButton": "Galerie",
+  "historyButton": "Historique",
+  "captureButton": "Capturer",
+  "noObjectsDetected": "Aucun objet detecte"
+}

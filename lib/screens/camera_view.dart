@@ -1,0 +1,494 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:camera/camera.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
+import '../services/detector_service.dart';
+import '../models/detection.dart';
+import 'detection_result_screen.dart';
+
+/// Main camera view screen for object detection
+/// Displays live camera preview with capture and gallery options
+class CameraView extends StatefulWidget {
+  const CameraView({Key? key}) : super(key: key);
+
+  @override
+  State<CameraView> createState() => _CameraViewState();
+}
+
+class _CameraViewState extends State<CameraView> with WidgetsBindingObserver {
+  CameraController? _cameraController;
+  final DetectorService _detectorService = DetectorService();
+  final ImagePicker _imagePicker = ImagePicker();
+  
+  bool _isInitializing = true;
+  bool _isProcessing = false;
+  String _statusMessage = 'Chargement du modèle...';
+  List<CameraDescription> _cameras = [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _initializeApp();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // Reinitialize camera when app comes back to foreground
+    if (state == AppLifecycleState.resumed) {
+      if (_cameraController != null && !_cameraController!.value.isInitialized) {
+        _initializeCamera();
+      }
+      // Clear status message when returning to camera view
+      if (mounted) {
+        setState(() {
+          _statusMessage = '';
+          _isProcessing = false;
+        });
+      }
+    } else if (state == AppLifecycleState.paused) {
+      // Dispose camera when app goes to background
+      _cameraController?.dispose();
+    }
+  }
+
+  /// Initialize camera and detector service
+  Future<void> _initializeApp() async {
+    try {
+      setState(() {
+        _statusMessage = 'Chargement du modèle...';
+      });
+
+      // Initialize detector service first
+      await _detectorService.initialize();
+
+      // Request camera permission
+      final cameraStatus = await Permission.camera.request();
+      if (!cameraStatus.isGranted) {
+        setState(() {
+          _statusMessage = 'Permission caméra requise';
+          _isInitializing = false;
+        });
+        return;
+      }
+
+      // Get available cameras
+      _cameras = await availableCameras();
+      if (_cameras.isEmpty) {
+        setState(() {
+          _statusMessage = 'Aucune caméra disponible';
+          _isInitializing = false;
+        });
+        return;
+      }
+
+      // Initialize camera
+      await _initializeCamera();
+
+      setState(() {
+        _isInitializing = false;
+        _statusMessage = '';
+      });
+    } catch (e) {
+      setState(() {
+        _statusMessage = 'Erreur d\'initialisation: $e';
+        _isInitializing = false;
+      });
+    }
+  }
+
+  /// Initialize camera controller
+  Future<void> _initializeCamera() async {
+    try {
+      // Dispose existing controller if any
+      await _cameraController?.dispose();
+
+      // Initialize camera controller with back camera
+      _cameraController = CameraController(
+        _cameras.first,
+        ResolutionPreset.high,
+        enableAudio: false,
+      );
+
+      await _cameraController!.initialize();
+
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e) {
+      print('Error initializing camera: $e');
+    }
+  }
+
+  /// Capture photo from camera and run detection
+  Future<void> _captureAndAnalyze() async {
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      return;
+    }
+
+    if (_isProcessing) return;
+
+    setState(() {
+      _isProcessing = true;
+      _statusMessage = 'Capture en cours...';
+    });
+
+    try {
+      // Capture image
+      final XFile imageFile = await _cameraController!.takePicture();
+      
+      setState(() {
+        _statusMessage = 'Analyse en cours...';
+      });
+
+      // Run object detection
+      final detections = await _detectorService.detectObjects(File(imageFile.path));
+
+      // Navigate to results screen
+      if (mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DetectionResultScreen(
+              imagePath: imageFile.path,
+              detections: detections,
+            ),
+          ),
+        );
+        
+        // Reset state when returning from results screen
+        if (mounted) {
+          setState(() {
+            _statusMessage = '';
+            _isProcessing = false;
+          });
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _statusMessage = 'Erreur: $e';
+      });
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
+  /// Pick image from gallery and run detection
+  Future<void> _pickFromGallery() async {
+    if (_isProcessing) return;
+
+    // Request storage permission
+    final storageStatus = await Permission.photos.request();
+    if (!storageStatus.isGranted) {
+      setState(() {
+        _statusMessage = 'Permission galerie requise';
+      });
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+      _statusMessage = 'Sélection d\'image...';
+    });
+
+    try {
+      // Pick image from gallery
+      final XFile? imageFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+      );
+
+      if (imageFile == null) {
+        setState(() {
+          _isProcessing = false;
+          _statusMessage = '';
+        });
+        return;
+      }
+
+      setState(() {
+        _statusMessage = 'Analyse en cours...';
+      });
+
+      // Run object detection
+      final detections = await _detectorService.detectObjects(File(imageFile.path));
+
+      // Navigate to results screen
+      if (mounted) {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => DetectionResultScreen(
+              imagePath: imageFile.path,
+              detections: detections,
+            ),
+          ),
+        );
+        
+        // Reset state when returning from results screen
+        if (mounted) {
+          setState(() {
+            _statusMessage = '';
+            _isProcessing = false;
+          });
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _statusMessage = 'Erreur: $e';
+      });
+    } finally {
+      setState(() {
+        _isProcessing = false;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _cameraController?.dispose();
+    _detectorService.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: _isInitializing
+            ? _buildLoadingView()
+            : _cameraController != null && _cameraController!.value.isInitialized
+                ? _buildCameraView()
+                : _buildErrorView(),
+      ),
+    );
+  }
+
+  /// Build loading view during initialization
+  Widget _buildLoadingView() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(
+            color: Colors.white,
+          ),
+          const SizedBox(height: 24),
+          Text(
+            _statusMessage,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build camera preview with controls
+  Widget _buildCameraView() {
+    return Stack(
+      children: [
+        // Full-screen camera preview
+        Positioned.fill(
+          child: CameraPreview(_cameraController!),
+        ),
+
+        // Top status bar
+        if (_statusMessage.isNotEmpty)
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              color: Colors.black54,
+              child: Text(
+                _statusMessage,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+
+        // Bottom controls
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 24),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.bottomCenter,
+                end: Alignment.topCenter,
+                colors: [
+                  Colors.black.withOpacity(0.8),
+                  Colors.transparent,
+                ],
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                // Gallery button
+                _buildControlButton(
+                  icon: Icons.photo_library,
+                  label: 'Galerie',
+                  onPressed: _isProcessing ? null : _pickFromGallery,
+                ),
+
+                // Capture button (larger, centered)
+                _buildCaptureButton(),
+
+                // History button (placeholder for future)
+                _buildControlButton(
+                  icon: Icons.history,
+                  label: 'Historique',
+                  onPressed: null, // TODO: Implement in next task
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        // Processing overlay
+        if (_isProcessing)
+          Positioned.fill(
+            child: Container(
+              color: Colors.black54,
+              child: const Center(
+                child: CircularProgressIndicator(
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Build large capture button
+  Widget _buildCaptureButton() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        GestureDetector(
+          onTap: _isProcessing ? null : _captureAndAnalyze,
+          child: Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _isProcessing ? Colors.grey : Colors.white,
+              border: Border.all(
+                color: Colors.white,
+                width: 4,
+              ),
+            ),
+            child: _isProcessing
+                ? const Padding(
+                    padding: EdgeInsets.all(16),
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(
+                    Icons.camera_alt,
+                    size: 32,
+                    color: Colors.black87,
+                  ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Analyser',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Build control button (gallery, history)
+  Widget _buildControlButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+  }) {
+    final isEnabled = onPressed != null;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          onPressed: onPressed,
+          icon: Icon(icon),
+          color: isEnabled ? Colors.white : Colors.white38,
+          iconSize: 32,
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            color: isEnabled ? Colors.white : Colors.white38,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Build error view when camera fails
+  Widget _buildErrorView() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.error_outline,
+              color: Colors.white,
+              size: 64,
+            ),
+            const SizedBox(height: 24),
+            Text(
+              _statusMessage.isEmpty 
+                  ? 'Impossible de démarrer la caméra' 
+                  : _statusMessage,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton(
+              onPressed: () {
+                setState(() {
+                  _isInitializing = true;
+                });
+                _initializeApp();
+              },
+              child: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

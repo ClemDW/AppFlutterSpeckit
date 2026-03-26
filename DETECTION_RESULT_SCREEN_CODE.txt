@@ -1,0 +1,189 @@
+import 'dart:io';
+import 'package:flutter/material.dart';
+import '../models/detection.dart';
+
+/// Screen displaying detection results with bounding boxes
+/// Shows analyzed image with colored rectangles and French labels
+class DetectionResultScreen extends StatelessWidget {
+  final String imagePath;
+  final List<Detection> detections;
+
+  const DetectionResultScreen({
+    Key? key,
+    required this.imagePath,
+    required this.detections,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.black,
+        title: const Text('Résultats de détection'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Column(
+        children: [
+          // Image with bounding boxes
+          Expanded(
+            child: Center(
+              child: detections.isEmpty
+                  ? _buildNoDetectionsView()
+                  : _buildImageWithDetections(),
+            ),
+          ),
+
+          // Detection list
+          if (detections.isNotEmpty) _buildDetectionsList(),
+        ],
+      ),
+    );
+  }
+
+  /// Build view when no objects detected
+  Widget _buildNoDetectionsView() {
+    return const Padding(
+      padding: EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.search_off,
+            color: Colors.white54,
+            size: 64,
+          ),
+          SizedBox(height: 16),
+          Text(
+            'Aucun objet détecté',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Essayez avec une autre image',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Build image with detection overlays (placeholder for Task 4)
+  Widget _buildImageWithDetections() {
+    return Stack(
+      children: [
+        // Display image
+        Image.file(
+          File(imagePath),
+          fit: BoxFit.contain,
+        ),
+        // TODO: Add bounding box overlay in Task 4
+        Positioned(
+          top: 16,
+          left: 16,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Text(
+              '${detections.length} objet${detections.length > 1 ? 's' : ''} détecté${detections.length > 1 ? 's' : ''}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Build list of detected objects
+  Widget _buildDetectionsList() {
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 200),
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text(
+              'Objets détectés',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: detections.length,
+              itemBuilder: (context, index) {
+                final detection = detections[index];
+                return ListTile(
+                  leading: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: _getColorForIndex(index),
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  title: Text(
+                    detection.label,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  trailing: Text(
+                    '${(detection.confidence * 100).toStringAsFixed(0)}%',
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Get unique color for each detection
+  Color _getColorForIndex(int index) {
+    final colors = [
+      Colors.red,
+      Colors.green,
+      Colors.blue,
+      Colors.yellow,
+      Colors.purple,
+      Colors.orange,
+      Colors.cyan,
+      Colors.pink,
+      Colors.lime,
+      Colors.teal,
+    ];
+    return colors[index % colors.length];
+  }
+}
