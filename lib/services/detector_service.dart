@@ -3,7 +3,6 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart';
 import 'package:image/image.dart' as img;
 import 'package:tflite_flutter/tflite_flutter.dart';
-import 'package:tflite_flutter_helper/tflite_flutter_helper.dart';
 import '../models/detection.dart';
 
 /// Service for object detection using TensorFlow Lite
@@ -18,7 +17,6 @@ class DetectorService {
   static const String _labelsPath = 'assets/labels/labels.txt';
   static const int _inputSize = 300; // MobileNet SSD input size
   static const double _confidenceThreshold = 0.5; // 50% minimum confidence
-  static const int _maxImageSize = 640; // Maximum image dimension for processing
 
   /// Check if service is ready
   bool get isInitialized => _isInitialized;
@@ -77,7 +75,7 @@ class DetectorService {
       
       // Read and decode image
       final imageBytes = await imageFile.readAsBytes();
-      img.Image? image = img.decodeImage(imageBytes);
+      img.Image? image = img.decodeImage(Uint8List.fromList(imageBytes));
       
       if (image == null) {
         throw Exception('Failed to decode image');
@@ -91,17 +89,17 @@ class DetectorService {
 
       // Preprocess image for model input
       final inputTensor = _preprocessImage(image);
-      print('Image preprocessed, input shape: ${inputTensor.shape}');
+      print('Image preprocessed to ${_inputSize}x$_inputSize');
 
       // Prepare output buffers for MobileNet SSD
       // Output format: [1, 10, 4] for boxes, [1, 10] for classes, [1, 10] for scores, [1] for count
-      final outputLocations = List.generate(1, (_) => List<double>.filled(10 * 4, 0.0));
-      final outputClasses = List.generate(1, (_) => List<double>.filled(10, 0.0));
-      final outputScores = List.generate(1, (_) => List<double>.filled(10, 0.0));
-      final numDetections = List<double>.filled(1, 0.0);
+      var outputLocations = [List<double>.filled(10 * 4, 0.0)];
+      var outputClasses = [List<double>.filled(10, 0.0)];
+      var outputScores = [List<double>.filled(10, 0.0)];
+      var numDetections = [0.0];
 
       // Create outputs map
-      final outputs = {
+      var outputs = {
         0: outputLocations,
         1: outputClasses,
         2: outputScores,
@@ -110,7 +108,7 @@ class DetectorService {
 
       // Run inference
       print('Running inference...');
-      _interpreter!.runForMultipleInputs([inputTensor.buffer], outputs);
+      _interpreter!.runForMultipleInputs([inputTensor], outputs);
       print('Inference complete, detections: ${numDetections[0].toInt()}');
 
       // Parse results into Detection objects
@@ -132,22 +130,38 @@ class DetectorService {
     }
   }
 
-  /// Preprocess image to model input format using TensorImage
-  /// Resize to 300x300 and normalize pixel values
-  TensorImage _preprocessImage(img.Image image) {
-    // Create TensorImage from image
-    final tensorImage = TensorImage.fromImage(image);
-    
-    // Create image processor with resize and normalization
-    final imageProcessor = ImageProcessorBuilder()
-        .add(ResizeOp(_inputSize, _inputSize, ResizeMethod.bilinear))
-        .add(NormalizeOp(0, 255)) // Normalize to [0, 1]
-        .build();
-    
-    // Process the image
-    imageProcessor.process(tensorImage);
-    
-    return tensorImage;
+  /// Preprocess image to model input format
+  /// Resize to 300x300 and normalize pixel values to [0, 1]
+  List<List<List<List<double>>>> _preprocessImage(img.Image image) {
+    // Resize image to model input size
+    final resizedImage = img.copyResize(
+      image,
+      width: _inputSize,
+      height: _inputSize,
+      interpolation: img.Interpolation.linear,
+    );
+
+    // Convert to 4D array [1, height, width, 3] with normalized values [0, 1]
+    var input = List.generate(
+      1,
+      (_) => List.generate(
+        _inputSize,
+        (y) => List.generate(
+          _inputSize,
+          (x) {
+            final pixel = resizedImage.getPixel(x, y);
+            // Normalize RGB values to [0, 1]
+            return [
+              pixel.r / 255.0,
+              pixel.g / 255.0,
+              pixel.b / 255.0,
+            ];
+          },
+        ),
+      ),
+    );
+
+    return input;
   }
 
   /// Parse model output into Detection objects
@@ -193,7 +207,7 @@ class DetectorService {
           ? _labels[classIndex]
           : 'Inconnu';
 
-      print('  Detection: $label (${(score * 100).toStringAsFixed(1)}%) at ($x, $y, $width, $height)');
+      print('  Accepted: $label (${(score * 100).toStringAsFixed(1)}%) at ($x, $y, $width, $height)');
 
       detections.add(Detection(
         label: label,
